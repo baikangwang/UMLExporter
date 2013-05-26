@@ -1,80 +1,112 @@
-﻿using System.Drawing.Imaging;
-using System.Linq;
-using System.ComponentModel.Composition;
-using System.Windows.Forms;
-using Microsoft.VisualStudio.ArchitectureTools.Extensibility.Presentation;
-using Microsoft.VisualStudio.ArchitectureTools.Extensibility.Uml;
-using Microsoft.VisualStudio.Modeling.Diagrams;
-using Microsoft.VisualStudio.Modeling.ExtensionEnablement;
-
-namespace UMLExporter
+﻿namespace UMLExporter
 {
-    // Custom context menu command extension
-    // See http://msdn.microsoft.com/en-us/library/ee329481(VS.100).aspx
-    [Export(typeof (ICommandExtension))]
+    using System.ComponentModel.Composition;
+    // for [Import], [Export]
+    using System.Drawing; // for Bitmap
+    using System.Drawing.Imaging; // for ImageFormat
+    using System.Linq; // for collection extensions
+    using System.Windows.Forms; // for SaveFileDialog
+    using Microsoft.VisualStudio.Modeling.Diagrams;
+    // for Diagram
+    using Microsoft.VisualStudio.Modeling.ExtensionEnablement;
+    // for IGestureExtension, ICommandExtension, ILinkedUndoContext
+    using Microsoft.VisualStudio.ArchitectureTools.Extensibility.Presentation;
+    // for IDiagramContext
+    using Microsoft.VisualStudio.ArchitectureTools.Extensibility.Uml;
+    // for designer extension attributes
+
+
+    /// <summary>
+    /// Called when the user clicks the menu item.
+    /// </summary>
+    // Context menu command applicable to any UML diagram 
+    [Export(typeof(ICommandExtension))]
     [ClassDesignerExtension]
     [UseCaseDesignerExtension]
     [SequenceDesignerExtension]
     [ComponentDesignerExtension]
     [ActivityDesignerExtension]
-    internal class SaveAsImage2Extension : ICommandExtension
+    class CommandExtension : ICommandExtension
     {
-        [Import(typeof (IDiagramContext))]
-        public IDiagramContext DiagramContext { get; set; }
-
-        public string Text
-        {
-            get { return "Save as image..."; }
-        }
+        [Import]
+        IDiagramContext Context { get; set; }
 
         public void Execute(IMenuCommand command)
         {
-            var dslDiagram = DiagramContext.CurrentDiagram.GetObject<Diagram>();
+            // Get the diagram of the underlying implementation.
+            Diagram dslDiagram = Context.CurrentDiagram.GetObject<Diagram>();
             if (dslDiagram != null)
             {
-                var dialog = new SaveFileDialog
-                                 {
-                                     AddExtension = true,
-                                     DefaultExt = "image.bmp",
-                                     Filter =
-                                         "Bitmap ( *.bmp )|*.bmp|" + "JPEG File ( *.jpg )|*.jpg|" +
-                                         "Enhanced Metafile (*.emf )|*.emf|" + "Portable Network Graphic ( *.png )|*.png",
-                                     FilterIndex = 1,
-                                     Title = "Save Diagram to Image"
-                                 };
-                if (dialog.ShowDialog() == DialogResult.OK && !string.IsNullOrEmpty(dialog.FileName))
+                string imageFileName = FileNameFromUser();
+                if (!string.IsNullOrEmpty(imageFileName))
                 {
-                    var bitmap = dslDiagram.CreateBitmap(dslDiagram.NestedChildShapes,
-                                                         Diagram.CreateBitmapPreference.FavorClarityOverSmallSize);
-                    bitmap.Save(dialog.FileName, GetImageType(dialog.FilterIndex));
+                    Bitmap bitmap = dslDiagram.CreateBitmap(
+                     dslDiagram.NestedChildShapes,
+                     Diagram.CreateBitmapPreference.FavorClarityOverSmallSize);
+                    bitmap.Save(imageFileName, GetImageType(imageFileName));
                 }
             }
         }
 
+        /// <summary>
+        /// Called when the user right-clicks the diagram.
+        /// Set Enabled and Visible to specify the menu item status.
+        /// </summary>
+        /// <param name="command"></param>
         public void QueryStatus(IMenuCommand command)
         {
-            if (DiagramContext.CurrentDiagram != null && DiagramContext.CurrentDiagram.ChildShapes.Any())
-            {
-                command.Enabled = true;
-            }
-            else
-            {
-                command.Enabled = false;
-            }
+            command.Enabled = Context.CurrentDiagram != null
+              && Context.CurrentDiagram.ChildShapes.Count() > 0;
         }
 
-        private static ImageFormat GetImageType(int filterIndex)
+        /// <summary>
+        /// Menu text.
+        /// </summary>
+        public string Text
         {
-            var result = ImageFormat.Bmp;
-            switch (filterIndex)
+            get { return "Save To Image..."; }
+        }
+
+
+        /// <summary>
+        /// Ask the user for the path of an image file.
+        /// </summary>
+        /// <returns>image file path, or null</returns>
+        private string FileNameFromUser()
+        {
+            SaveFileDialog dialog = new SaveFileDialog
+                                        {
+                                            AddExtension = true,
+                                            DefaultExt = "image.bmp",
+                                            Filter =
+                                                "Bitmap ( *.bmp )|*.bmp|JPEG File ( *.jpg )|*.jpg|Enhanced Metafile (*.emf )|*.emf|Portable Network Graphic ( *.png )|*.png",
+                                            FilterIndex = 1,
+                                            Title = "Save Diagram to Image"
+                                        };
+            return dialog.ShowDialog() == DialogResult.OK ? dialog.FileName : null;
+        }
+
+        /// <summary>
+        /// Return the appropriate image type for a file extension.
+        /// </summary>
+        /// <param name="fileName"></param>
+        /// <returns></returns>
+        private ImageFormat GetImageType(string fileName)
+        {
+            string name = System.IO.Path.GetExtension(fileName);
+            if(string.IsNullOrEmpty(name))
+                return ImageFormat.Bmp;
+            string extension = name.ToLowerInvariant();
+            ImageFormat result = ImageFormat.Bmp;
+            switch (extension)
             {
-                case 2:
+                case ".jpg":
                     result = ImageFormat.Jpeg;
                     break;
-                case 3:
+                case ".emf":
                     result = ImageFormat.Emf;
                     break;
-                case 4:
+                case ".png":
                     result = ImageFormat.Png;
                     break;
             }
